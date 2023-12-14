@@ -193,6 +193,7 @@ static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
 static void restack(Monitor *m);
+static void restart(const Arg *arg);
 static void run(void);
 static void scan(void);
 static int sendevent(Client *c, Atom proto);
@@ -262,6 +263,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 };
 static Atom wmatom[WMLast], netatom[NetLast];
 static int running = 1;
+static int perform_restart = 0;
 static Cur *cursor[CurLast];
 static Clr **scheme;
 static Display *dpy;
@@ -1371,6 +1373,13 @@ restack(Monitor *m)
 }
 
 void
+restart(const Arg *arg)
+{
+	perform_restart = 1;
+	running = 0;
+}
+
+void
 run(void)
 {
 	XEvent ev;
@@ -2143,5 +2152,7 @@ main(int argc, char *argv[])
 	run();
 	cleanup();
 	XCloseDisplay(dpy);
+	if (perform_restart)
+		execvp(argv[0], argv);
 	return EXIT_SUCCESS;
 }
