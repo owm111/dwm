@@ -176,6 +176,7 @@ static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
+static float elapsed(struct timespec end, struct timespec start);
 static void enternotify(XEvent *e);
 static void expose(XEvent *e);
 static Client *findclient(long id);
@@ -298,6 +299,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[UnmapNotify] = unmapnotify
 };
 static Atom wmatom[WMLast], netatom[NetLast];
+static struct timespec lastquit;
 static int running = 1;
 static int perform_restart = 0;
 static Cur *cursor[CurLast];
@@ -847,6 +849,16 @@ drawbars(void)
 
 	for (m = mons; m; m = m->next)
 		drawbar(m);
+}
+
+float
+elapsed(struct timespec end, struct timespec start)
+{
+	float result = 0.0;
+
+	result += (float)end.tv_sec + (float)end.tv_nsec * 1e-9;
+	result -= (float)start.tv_sec + (float)start.tv_nsec * 1e-9;
+	return result;
 }
 
 void
@@ -1494,7 +1506,12 @@ pushup(const Arg *arg) {
 void
 quit(const Arg *arg)
 {
-	running = 0;
+	struct timespec now = {-1, -1};
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (elapsed(now, lastquit) < quitinterval)
+		running = 0;
+	lastquit = now;
 }
 
 Monitor *
