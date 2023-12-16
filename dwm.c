@@ -165,6 +165,7 @@ static void drawbar(Monitor *m);
 static void drawbars(void);
 static void enternotify(XEvent *e);
 static void expose(XEvent *e);
+static Client *findclient(long id);
 static void focus(Client *c);
 static void focusin(XEvent *e);
 static void focusmaster(const Arg *arg);
@@ -186,6 +187,7 @@ static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static Client *nexttiled(Client *c);
+static Monitor *numtomon(int num);
 static void pop(Client *c);
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
@@ -195,7 +197,9 @@ static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
 static void restack(Monitor *m);
 static void restart(const Arg *arg);
+static void restoresession(void);
 static void run(void);
+static void savesession(void);
 static void scan(void);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
@@ -204,6 +208,8 @@ static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
+static void setmontags(Client *c, int num, unsigned int tags);
+static void setsessionfile(void);
 static void setup(void);
 static void seturgent(Client *c, int urg);
 static void showhide(Client *c);
@@ -239,6 +245,7 @@ static void zoom(const Arg *arg);
 
 /* variables */
 static const char broken[] = "broken";
+static char sessionfile[256] = "/tmp/dwm-session";
 static char stext[256];
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
@@ -790,6 +797,19 @@ expose(XEvent *e)
 		drawbar(m);
 }
 
+Client *
+findclient(long id)
+{
+	Monitor *m;
+	Client *c;
+
+	for (m = mons; m != NULL; m = m->next)
+		for (c = m->clients; c != NULL; c = c->next)
+			if (c->win == id)
+				return c;
+	return NULL;
+}
+
 void
 focus(Client *c)
 {
@@ -1219,6 +1239,17 @@ nexttiled(Client *c)
 	return c;
 }
 
+Monitor *
+numtomon(int num)
+{
+	Monitor *m;
+
+	for (m = mons; m != NULL; m = m->next)
+		if (m->num == num)
+			return m;
+	return NULL;
+}
+
 void
 pop(Client *c)
 {
@@ -1397,6 +1428,33 @@ restart(const Arg *arg)
 }
 
 void
+restoresession(void)
+{
+	unsigned long win;
+	int num;
+	unsigned int tags;
+	Client *c;
+	Monitor *m;
+	FILE *file;
+
+	file = fopen(sessionfile, "r");
+	if (file == NULL)
+		return;
+	while (fscanf(file, "%lu %d %u", &win, &num, &tags) == 3) {
+		c = findclient(win);
+		if (c == NULL)
+			continue;
+		setmontags(c, num, tags);
+	}
+	fclose(file);
+	remove(sessionfile);
+	for (m = mons; m != NULL; m = m->next) {
+		restack(m);
+		arrange(m);
+	}
+}
+
+void
 run(void)
 {
 	XEvent ev;
@@ -1405,6 +1463,22 @@ run(void)
 	while (running && !XNextEvent(dpy, &ev))
 		if (handler[ev.type])
 			handler[ev.type](&ev); /* call handler */
+}
+
+void
+savesession(void)
+{
+	FILE *file;
+	Client *c;
+	Monitor *m;
+
+	file = fopen(sessionfile, "w");
+	if (file == NULL)
+		return;
+	for (m = mons; m != NULL; m = m->next)
+		for (c = m->clients; c != NULL; c = c->next)
+			fprintf(file, "%lu %d %u\n", c->win, m->num, c->tags);
+	fclose(file);
 }
 
 void
@@ -1551,6 +1625,36 @@ setmfact(const Arg *arg)
 		return;
 	selmon->mfact = f;
 	arrange(selmon);
+}
+
+void
+setmontags(Client *c, int num, unsigned int tag)
+{
+	Monitor *m;
+	unsigned int masked;
+
+	m = numtomon(num);
+	if (m != NULL)
+		sendmon(c, m);
+	masked = tag & TAGMASK;
+	if (masked != 0)
+		c->tags = masked;
+}
+
+void
+setsessionfile(void)
+{
+	int bytes;
+	char *runtimedir;
+	const char name[] = "dwm-session";
+
+	runtimedir = getenv("XDG_RUNTIME_DIR");
+	if (runtimedir == NULL)
+		return;
+	bytes = strlen(runtimedir) + 1 + strlen(name) + 1;
+	if (bytes > sizeof(sessionfile))
+		return;
+	sprintf(sessionfile, "%s/%s", runtimedir, name);
 }
 
 void
@@ -2166,7 +2270,11 @@ main(int argc, char *argv[])
 		die("pledge");
 #endif /* __OpenBSD__ */
 	scan();
+	setsessionfile();
+	restoresession();
 	run();
+	if (perform_restart)
+		savesession();
 	cleanup();
 	XCloseDisplay(dpy);
 	if (perform_restart)
