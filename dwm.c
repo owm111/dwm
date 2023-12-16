@@ -161,6 +161,7 @@ static void attach(Client *c);
 static void attachabove(Client *c);
 static void attachstack(Client *c);
 static void buttonpress(XEvent *e);
+static void cdtochildwd(pid_t parent);
 static void checkotherwm(void);
 static void cleanup(void);
 static void cleanupmon(Monitor *mon);
@@ -518,6 +519,31 @@ buttonpress(XEvent *e)
 		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
 		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
 			buttons[i].func(click == ClkTagBar && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+}
+
+void
+cdtochildwd(pid_t parent)
+{
+	int rc;
+	pid_t child;
+	FILE *children;
+	char buf[256];
+
+	if (parent == 0)
+		return;
+	snprintf(buf, sizeof(buf) - 1, "cat /proc/%d/task/*/children", parent);
+	children = popen(buf, "r");
+	if (children == NULL)
+		return;
+	rc = fscanf(children, "%d", &child);
+	if (rc != 1)
+		goto uhoh;
+	snprintf(buf, sizeof(buf) - 1, "/proc/%d/cwd", child);
+	/* XXX this only takes the wd of the first child, but loops/recursion
+	could let it walk the process tree to find the deepest wd, etc. */
+	rc = chdir(buf);
+	(void)rc;
+uhoh:	pclose(children);
 }
 
 void
@@ -1943,6 +1969,8 @@ spawn(const Arg *arg)
 	if (fork() == 0) {
 		if (dpy)
 			close(ConnectionNumber(dpy));
+		if (selmon->sel != NULL)
+			cdtochildwd(selmon->sel->pid);
 		setsid();
 		execvp(((char **)arg->v)[0], (char **)arg->v);
 		die("dwm: execvp '%s' failed:", ((char **)arg->v)[0]);
