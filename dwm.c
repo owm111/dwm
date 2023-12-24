@@ -950,8 +950,10 @@ focusmaster(const Arg *arg)
 	if (selmon->sel->isfullscreen && lockfullscreen)
 		return;
 	c = nexttiled(selmon->clients);
-	if (c)
+	if (c) {
 		focus(c);
+		warp(c);
+	}
 }
 
 void
