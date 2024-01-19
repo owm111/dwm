@@ -124,6 +124,7 @@ struct Monitor {
 	char ltsymbol[16];
 	float mfact;
 	int nmaster;
+	int mirrored;
 	int num;
 	int by;               /* bar geometry */
 	int mx, my, mw, mh;   /* screen size */
@@ -231,6 +232,7 @@ static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
+static void setmirror(const Arg *arg);
 static void setmontags(Client *c, int num, unsigned int tags);
 static void setsessionfile(void);
 static void setup(void);
@@ -796,6 +798,7 @@ createmon(void)
 	m->tagset[0] = m->tagset[1] = startontag ? 1 : 0;
 	m->mfact = mfact;
 	m->nmaster = nmaster;
+	m->mirrored = mirrored;
 	m->showbar = showbar;
 	m->topbar = topbar;
 	m->lt[0] = &layouts[0];
@@ -1625,6 +1628,8 @@ recttomon(int x, int y, int w, int h)
 void
 resize(Client *c, int x, int y, int w, int h, int interact)
 {
+	if (c->mon->mirrored)
+		x = c->mon->ww - x - w - 2 * c->bw;
 	if (applysizehints(c, &x, &y, &w, &h, interact))
 		resizeclient(c, x, y, w, h);
 }
@@ -1932,6 +1937,19 @@ setmfact(const Arg *arg)
 	if (f < 0.05 || f > 0.95)
 		return;
 	selmon->mfact = f;
+	arrange(selmon);
+}
+
+/* arg == -1 will toggle */
+void
+setmirror(const Arg *arg)
+{
+	if (!arg || !selmon->lt[selmon->sellt]->arrange)
+		return;
+	if (arg->i == -1)
+		selmon->mirrored ^= 1;
+	else
+		selmon->mirrored = arg->i != 0;
 	arrange(selmon);
 }
 
